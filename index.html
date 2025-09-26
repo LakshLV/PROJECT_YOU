@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Solo Leveling XP Demo</title>
+<style>
+  body {
+    margin: 0;
+    height: 100vh;
+    background: url('https://picsum.photos/1920/1080?random=1') no-repeat center center/cover;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: white;
+  }
+
+  .overlay {
+    background: rgba(0,0,0,0.4);
+    border-radius: 20px;
+    padding: 20px;
+    margin: 10px;
+    backdrop-filter: blur(10px);
+    width: 90%;
+    max-width: 600px;
+  }
+
+  h1, h2 {
+    text-align: center;
+    margin: 10px 0;
+  }
+
+  #level-container {
+    text-align: center;
+    font-size: 1.5rem;
+    margin-bottom: 10px;
+  }
+
+  #xp-bar-container {
+    width: 100%;
+    height: 25px;
+    background: rgba(255,255,255,0.2);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 20px;
+  }
+
+  #xp-bar {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #00f, #0ff);
+    transition: width 0.3s;
+  }
+
+  #quest-input-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 15px;
+    flex-wrap: wrap;
+  }
+
+  input, select, button {
+    padding: 8px;
+    margin: 5px;
+    border-radius: 8px;
+    border: none;
+    font-size: 1rem;
+  }
+
+  .mic-btn {
+    background: red;
+    color: white;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    font-size: 1.2rem;
+    cursor: pointer;
+  }
+
+  ul {
+    list-style: none;
+    padding: 0;
+  }
+
+  li {
+    background: rgba(255,255,255,0.1);
+    margin: 5px 0;
+    padding: 10px;
+    border-radius: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .complete-btn {
+    background: #4caf50;
+    color: white;
+    border: none;
+    padding: 5px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+
+  #speech-instructions {
+    position: fixed;
+    bottom: 20px;
+    width: 100%;
+    text-align: center;
+    font-size: 1.2rem;
+    color: yellow;
+  }
+
+  #leaderboard {
+    padding: 0;
+  }
+
+  #leaderboard li {
+    text-align: left;
+    font-size: 1rem;
+    margin: 4px 0;
+  }
+</style>
+</head>
+<body>
+
+<div class="overlay">
+  <h1>Solo Leveling XP Demo</h1>
+
+  <div id="level-container">Level: <span id="level">1</span></div>
+  <div id="xp-bar-container">
+    <div id="xp-bar"></div>
+  </div>
+
+  <div id="quest-input-container">
+    <input type="text" id="quest-name" placeholder="New quest...">
+    <select id="quest-difficulty">
+      <option value="1">D Class</option>
+      <option value="2">C Class</option>
+      <option value="3">B Class</option>
+      <option value="4">A Class</option>
+      <option value="5">S Class</option>
+    </select>
+    <button onclick="addQuest()">Add Quest</button>
+    <button class="mic-btn" onclick="startListening()">🎤</button>
+  </div>
+
+  <div id="speech-transcript"></div>
+  <ul id="quest-list"></ul>
+</div>
+
+<div class="overlay">
+  <h2>Leaderboard</h2>
+  <ul id="leaderboard"></ul>
+</div>
+
+<div id="speech-instructions">Press 🎤 and say: "Quest name followed by difficulty level"</div>
+
+<script type="module">
+  // --- Firebase Setup ---
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getFirestore, collection, addDoc, query, orderBy, limit, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+  // TODO: Replace with your Firebase config
+  const firebaseConfig = {
+  apiKey: "AIzaSyAHHF_g7Rp_FfspPRfC9toQoVJB7Ftm57U",
+  authDomain: "project-you-c7ac4.firebaseapp.com",
+  projectId: "project-you-c7ac4",
+  storageBucket: "project-you-c7ac4.firebasestorage.app",
+  messagingSenderId: "316119601239",
+  appId: "1:316119601239:web:3c5cee97821e51039e9312"
+};
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+
+  // --- Game Logic ---
+  let quests = [];
+  let xp = 0;
+  let level = 1;
+  const xpThreshold = 100;
+
+  // Generate random player name for now
+  const playerName = "Player_" + Math.floor(Math.random() * 1000);
+
+  function addQuest(name, difficulty) {
+    if (!name) name = document.getElementById('quest-name').value;
+    if (!difficulty) difficulty = parseInt(document.getElementById('quest-difficulty').value);
+    if (name === '') return;
+
+    quests.push({ name, difficulty });
+    renderQuests();
+    document.getElementById('quest-name').value = '';
+    document.getElementById('speech-transcript').textContent = '';
+  }
+
+  function completeQuest(index) {
+    const quest = quests[index];
+    let gainedXp = quest.difficulty * 20; 
+    xp += gainedXp;
+
+    // Level up logic
+    while (xp >= xpThreshold) {
+      xp -= xpThreshold;
+      level++;
+      document.getElementById('level').textContent = level;
+    }
+
+    quests.splice(index, 1);
+    renderQuests();
+    updateXpBar();
+    saveProgress();
+  }
+
+  function renderQuests() {
+    const questList = document.getElementById('quest-list');
+    questList.innerHTML = '';
+    quests.forEach((quest, index) => {
+      const li = document.createElement('li');
+      const diffNames = ["D Class", "C Class", "B Class", "A Class", "S Class"];
+      li.innerHTML = `
+        ${quest.name} [${diffNames[quest.difficulty-1]}]
+        <button class="complete-btn" onclick="completeQuest(${index})">Complete</button>
+      `;
+      questList.appendChild(li);
+    });
+  }
+
+  function updateXpBar() {
+    const bar = document.getElementById('xp-bar');
+    bar.style.width = (xp / xpThreshold * 100) + '%';
+  }
+
+  // --- Firebase Leaderboard ---
+  async function saveProgress() {
+    try {
+      await addDoc(collection(db, "leaderboard"), {
+        name: playerName,
+        level: level,
+        xp: xp,
+        timestamp: Date.now()
+      });
+    } catch (e) {
+      console.error("Error adding doc: ", e);
+    }
+  }
+
+  const leaderboardEl = document.getElementById('leaderboard');
+  function renderLeaderboard(snapshot) {
+    leaderboardEl.innerHTML = "";
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      const li = document.createElement("li");
+      li.textContent = `${data.name} — Lvl ${data.level} (${data.xp} XP)`;
+      leaderboardEl.appendChild(li);
+    });
+  }
+
+  const q = query(collection(db, "leaderboard"), orderBy("level", "desc"), limit(10));
+  onSnapshot(q, renderLeaderboard);
+
+  // --- Speech Recognition ---
+  window.startListening = function() {
+    const instructions = document.getElementById('speech-instructions');
+    instructions.style.display = "block";
+
+    const transcriptEl = document.getElementById('speech-transcript');
+    transcriptEl.textContent = "Listening...";
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+
+    recognition.onresult = (event) => {
+      let interimTranscript = '';
+      let finalTranscript = '';
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalTranscript += transcript;
+        } else {
+          interimTranscript += transcript;
+        }
+      }
+      transcriptEl.textContent = finalTranscript || interimTranscript;
+    };
+
+    recognition.onend = () => {
+      const speech = transcriptEl.textContent.trim();
+      if (!speech) return;
+
+      // For now, just default to Medium (difficulty parsing later)
+      addQuest(speech, 2);
+    };
+
+    recognition.start();
+  }
+  window.addQuest = addQuest;
+  window.completeQuest = completeQuest;
+</script>
+</body>
+</html>
+
+
+
